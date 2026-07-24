@@ -447,6 +447,22 @@ function isoWeekKey(date) {
   return `${d.getUTCFullYear()}-S${String(week).padStart(2, '0')}`;
 }
 
+function formatWeekLabel(weekKey) {
+  const [yearStr, wkStr] = weekKey.split('-S');
+  const year = parseInt(yearStr, 10);
+  const week = parseInt(wkStr, 10);
+  const jan4 = new Date(Date.UTC(year, 0, 4));
+  const jan4Day = (jan4.getUTCDay() + 6) % 7;
+  const monday = new Date(jan4);
+  monday.setUTCDate(jan4.getUTCDate() - jan4Day + (week - 1) * 7);
+  const sunday = new Date(monday);
+  sunday.setUTCDate(monday.getUTCDate() + 6);
+  const sameMonth = monday.getUTCMonth() === sunday.getUTCMonth();
+  const startStr = monday.toLocaleDateString('fr-FR', sameMonth ? { day: 'numeric' } : { day: 'numeric', month: 'short' });
+  const endStr = sunday.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+  return `${startStr}-${endStr}`;
+}
+
 function computeManagerialStats(rawRows) {
   const rows = rawRows.map(r => {
     const eq = r.equipements || {};
@@ -461,10 +477,25 @@ function computeManagerialStats(rawRows) {
     };
   }).filter(r => r.createdAt);
 
-  // --- Tendance hebdomadaire (anomalies signalées, 8 dernières semaines avec données) ---
-  const weekCounts = {};
+  // L'app enregistre une nouvelle ligne "releves" à chaque champ modifié
+  // (auto-save). Une seule anomalie réelle peut donc générer plusieurs
+  // lignes identiques. Pour ne compter chaque incident qu'une fois, on
+  // déduplique par équipement + jour + texte d'anomalie avant de compter.
+  const incidentsSeen = new Set();
+  const dedupedAnomalyRows = [];
   rows.forEach(r => {
     if (!r.anomalie) return;
+    const dt = r.createdAt;
+    const dayKey = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+    const incidentKey = `${r.cat}|${r.code}|${r.composant}|${dayKey}|${r.anomalie}`;
+    if (incidentsSeen.has(incidentKey)) return;
+    incidentsSeen.add(incidentKey);
+    dedupedAnomalyRows.push(r);
+  });
+
+  // --- Tendance hebdomadaire (incidents distincts, 8 dernières semaines avec données) ---
+  const weekCounts = {};
+  dedupedAnomalyRows.forEach(r => {
     const wk = isoWeekKey(r.createdAt);
     weekCounts[wk] = (weekCounts[wk] || 0) + 1;
   });
@@ -472,8 +503,7 @@ function computeManagerialStats(rawRows) {
 
   // --- Classement par ligne ---
   const ligneCounts = {};
-  rows.forEach(r => {
-    if (!r.anomalie) return;
+  dedupedAnomalyRows.forEach(r => {
     ligneCounts[r.ligne] = (ligneCounts[r.ligne] || 0) + 1;
   });
   const byLigne = Object.entries(ligneCounts).sort((a, b) => b[1] - a[1]);
@@ -481,8 +511,7 @@ function computeManagerialStats(rawRows) {
 
   // --- Équipements les plus signalés ---
   const equipCounts = {};
-  rows.forEach(r => {
-    if (!r.anomalie) return;
+  dedupedAnomalyRows.forEach(r => {
     const key = `${r.cat}|${r.code}|${r.composant}`;
     if (!equipCounts[key]) equipCounts[key] = { cat: r.cat, code: r.code, composant: r.composant, ligne: r.ligne, count: 0 };
     equipCounts[key].count++;
@@ -512,7 +541,7 @@ function computeManagerialStats(rawRows) {
     ? resolutionDays.reduce((s, d) => s + d, 0) / resolutionDays.length
     : null;
 
-  const totalAnomalies = rows.filter(r => r.anomalie).length;
+  const totalAnomalies = dedupedAnomalyRows.length;
 
   return { weekly, byLigne, totalLigneAnoms, topEquip, avgResolutionDays, resolutionCount: resolutionDays.length, totalAnomalies };
 }
@@ -542,12 +571,12 @@ function renderManagerial() {
     ${weekly.length === 0 ? `
       <div class="empty-state"><div class="ico">📊</div><div class="title">Pas encore assez de données</div></div>
     ` : `
-      <div style="display:flex;align-items:flex-end;gap:10px;height:140px;padding:10px 4px 0;margin-bottom:24px;">
+      <div style="display:flex;align-items:flex-end;gap:18px;height:140px;padding:10px 4px 0;margin-bottom:24px;">
         ${weekly.map(([wk, count]) => `
-          <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;height:100%;justify-content:flex-end;">
+          <div style="width:64px;flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:6px;height:100%;justify-content:flex-end;">
             <div style="font-size:11px;font-weight:700;color:var(--ocp-forest);">${count}</div>
             <div style="width:100%;max-width:34px;background:var(--ocp-forest);border-radius:4px 4px 0 0;height:${Math.max(4, (count / maxWeekCount) * 100)}%;"></div>
-            <div style="font-size:10px;color:var(--muted);">${wk.split('-S')[1]}</div>
+            <div style="font-size:10px;color:var(--muted);white-space:nowrap;">${formatWeekLabel(wk)}</div>
           </div>
         `).join('')}
       </div>
