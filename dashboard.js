@@ -7,6 +7,9 @@ let filters = { search: '', ligne: 'all', cat: 'all' };
 let historyDays = null;
 let selectedDay = null;
 let historyDayRows = null;
+let historyMode = 'day'; // 'day' | 'equipment'
+let equipHistory = null;
+let openEquipGroups = {};
 
 function render() {
   const app = document.getElementById('app');
@@ -36,7 +39,7 @@ function renderSubTabs() {
 }
 
 function attachSubTabHandlers() {
-  document.querySelectorAll('.tab-btn').forEach(btn => {
+  document.querySelectorAll('[data-tab]').forEach(btn => {
     btn.addEventListener('click', () => {
       const t = btn.dataset.tab;
       if (t === 'history') openHistoryTab();
@@ -145,6 +148,16 @@ function attachContentFilterHandlers() {
   document.querySelectorAll('[data-history-day]').forEach(card => {
     card.addEventListener('click', () => openHistoryDay(card.dataset.historyDay));
   });
+  document.querySelectorAll('[data-history-mode]').forEach(btn => {
+    btn.addEventListener('click', () => switchHistoryMode(btn.dataset.historyMode));
+  });
+  document.querySelectorAll('[data-equip-group]').forEach(head => {
+    head.addEventListener('click', () => {
+      const id = head.dataset.equipGroup;
+      openEquipGroups[id] = !openEquipGroups[id];
+      renderTabContent();
+    });
+  });
 }
 
 // -------------------------------------------------------------------------
@@ -152,9 +165,11 @@ function attachContentFilterHandlers() {
 // -------------------------------------------------------------------------
 async function openHistoryTab() {
   currentTab = 'history';
+  historyMode = 'day';
   selectedDay = null;
   historyDayRows = null;
   historyDays = null;
+  equipHistory = null;
   render();
 
   const { data, error } = await supabaseClient
@@ -197,6 +212,53 @@ async function openHistoryDay(day) {
   renderTabContent();
 }
 
+async function openHistoryEquipmentMode() {
+  historyMode = 'equipment';
+  equipHistory = null;
+  renderTabContent();
+
+  const { data, error } = await supabaseClient
+    .from('releves')
+    .select('*, equipements(categorie, code, ligne, description, composant)')
+    .order('created_at', { ascending: false })
+    .limit(3000);
+
+  if (error) { console.error(error); equipHistory = []; renderTabContent(); return; }
+
+  const userIds = [...new Set((data || []).map(r => r.saisi_par).filter(Boolean))];
+  const names = await fetchProfilNames(userIds);
+
+  const groups = {};
+  (data || []).forEach(r => {
+    const eq = r.equipements || {};
+    const key = `${eq.categorie}-${eq.code}-${eq.composant || ''}`;
+    if (!groups[key]) {
+      groups[key] = {
+        categorie: eq.categorie, code: eq.code, ligne: eq.ligne,
+        description: eq.description, composant: eq.composant, entries: []
+      };
+    }
+    groups[key].entries.push({
+      etat: r.etat, anomalie: r.anomalie, statut: r.statut, commentaire: r.commentaire,
+      createdAt: r.created_at, saisiPar: r.saisi_par ? (names[r.saisi_par] || '—') : '—'
+    });
+  });
+
+  equipHistory = Object.values(groups).sort((a, b) => (a.code || '').localeCompare(b.code || ''));
+  renderTabContent();
+}
+
+function switchHistoryMode(mode) {
+  if (mode === historyMode) return;
+  if (mode === 'day') {
+    historyMode = 'day';
+    if (historyDays === null) openHistoryTab();
+    else renderTabContent();
+  } else {
+    openHistoryEquipmentMode();
+  }
+}
+
 function formatDateFr(dateStr) {
   const d = new Date(dateStr + 'T00:00:00');
   if (isNaN(d)) return dateStr;
@@ -208,14 +270,27 @@ function todayStr() {
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 }
 
+function renderHistoryModeToggle() {
+  return `
+    <div class="tabs" style="margin-bottom:16px;">
+      <button class="tab-btn ${historyMode==='day' ? 'active' : ''}" data-history-mode="day">🗓 Par jour</button>
+      <button class="tab-btn ${historyMode==='equipment' ? 'active' : ''}" data-history-mode="equipment">⚙ Par équipement</button>
+    </div>
+  `;
+}
+
 function renderHistory() {
-  if (selectedDay) return renderHistoryDayDetail();
+  const toggle = renderHistoryModeToggle();
+
+  if (historyMode === 'equipment') return toggle + renderHistoryByEquipment();
+
+  if (selectedDay) return toggle + renderHistoryDayDetail();
 
   if (historyDays === null) {
-    return `<div class="loading-screen"><div class="spinner"></div><div>Chargement de l'historique…</div></div>`;
+    return toggle + `<div class="loading-screen"><div class="spinner"></div><div>Chargement de l'historique…</div></div>`;
   }
   if (historyDays.length === 0) {
-    return `
+    return toggle + `
       <div class="empty-state">
         <div class="ico">🗓</div>
         <div class="title">Aucun historique pour l'instant</div>
@@ -223,7 +298,7 @@ function renderHistory() {
       </div>
     `;
   }
-  return `
+  return toggle + `
     <div class="section-title"><span>Journées avec des saisies (${historyDays.length})</span></div>
     <div class="cards">
       ${historyDays.map(d => `
@@ -236,6 +311,66 @@ function renderHistory() {
           <div class="card-right"><span class="chevron">›</span></div>
         </div>
       `).join('')}
+    </div>
+  `;
+}
+
+function renderHistoryByEquipment() {
+  if (equipHistory === null) {
+    return `<div class="loading-screen"><div class="spinner"></div><div>Chargement par équipement…</div></div>`;
+  }
+  if (equipHistory.length === 0) {
+    return `
+      <div class="empty-state">
+        <div class="ico">⚙</div>
+        <div class="title">Aucun historique pour l'instant</div>
+        <div>Chaque saisie est enregistrée automatiquement, par équipement.</div>
+      </div>
+    `;
+  }
+  return `
+    <div class="section-title"><span>${equipHistory.length} équipement(s) avec historique</span></div>
+    <div class="equip-group-list">
+      ${equipHistory.map(g => {
+        const groupId = `eq-${g.categorie}-${g.code}-${g.composant || ''}`;
+        const isOpen = !!openEquipGroups[groupId];
+        const icon = CAT_META[g.categorie] ? CAT_META[g.categorie].icon : '•';
+        return `
+        <div class="equip-group">
+          <div class="equip-head" data-equip-group="${groupId}">
+            <div class="equip-head-left">
+              <div class="cat-ico">${icon}</div>
+              <div>
+                <div class="equip-head-title">${g.code || ''} — ${g.composant || g.description || ''} <span style="color:var(--muted);font-weight:500;">(${g.ligne || ''})</span></div>
+                <div class="equip-head-sub">${g.entries.length} relevé(s)</div>
+              </div>
+            </div>
+            <span class="chevron">${isOpen ? '▾' : '›'}</span>
+          </div>
+          <div class="equip-body ${isOpen ? 'open' : ''}">
+            <div class="cards" style="padding:12px 15px;">
+              ${g.entries.map(e => `
+                <div class="card" style="cursor:default;">
+                  <div class="cat-ico">${icon}</div>
+                  <div class="card-main">
+                    <div class="card-title">
+                      <span>${new Date(e.createdAt).toLocaleDateString('fr-FR')}</span>
+                      ${e.etat ? `<span class="badge ${etatClass(e.etat)}">${e.etat}</span>` : ''}
+                    </div>
+                    <div class="card-sub">
+                      <span>Par ${escapeHtml(e.saisiPar)}</span>
+                      <span>${new Date(e.createdAt).toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'})}</span>
+                    </div>
+                    ${e.anomalie ? `<div class="card-anom">⚠ ${escapeHtml(e.anomalie)}</div>` : ''}
+                    ${e.commentaire ? `<div class="card-sub">${escapeHtml(e.commentaire)}</div>` : ''}
+                  </div>
+                  <div class="card-right"><span class="badge ${statutClass(e.statut)}">${e.statut || 'Non traité'}</span></div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        </div>`;
+      }).join('')}
     </div>
   `;
 }
