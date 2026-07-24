@@ -280,6 +280,7 @@ function renderNav(active) {
       <div class="topbar-right">
         <div class="date-pill">👤 <b>${escapeHtml(currentUser || '')}</b></div>
         <div class="date-pill">📅 <b>${dateStr}</b></div>
+        <button class="reset-btn" id="btn-export">📥 Exporter</button>
         <button class="reset-btn" id="logoutBtn">Déconnexion</button>
       </div>
     </div>
@@ -290,6 +291,9 @@ function renderNav(active) {
 function attachNavHandlers() {
   const logoutBtn = document.getElementById('logoutBtn');
   if (logoutBtn) logoutBtn.addEventListener('click', signOutApp);
+
+  const exportBtn = document.getElementById('btn-export');
+  if (exportBtn) exportBtn.addEventListener('click', exportReleves);
 }
 
 // -------------------------------------------------------------------------
