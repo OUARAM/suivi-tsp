@@ -280,7 +280,14 @@ function renderNav(active) {
       <div class="topbar-right">
         <div class="date-pill">👤 <b>${escapeHtml(currentUser || '')}</b></div>
         <div class="date-pill">📅 <b>${dateStr}</b></div>
-        <button class="reset-btn" id="btn-export">📥 Exporter</button>
+        <div class="export-menu-wrap" id="exportMenuWrap">
+          <button class="reset-btn" id="btn-export">📥 Exporter ▾</button>
+          <div class="export-menu" id="exportMenu">
+            <div class="export-menu-item" data-export-mode="complet">📄 Export complet</div>
+            <div class="export-menu-item" data-export-mode="jour">🗓 Groupé par jour</div>
+            <div class="export-menu-item" data-export-mode="equipement">⚙ Groupé par équipement</div>
+          </div>
+        </div>
         <button class="reset-btn" id="logoutBtn">Déconnexion</button>
       </div>
     </div>
@@ -293,7 +300,21 @@ function attachNavHandlers() {
   if (logoutBtn) logoutBtn.addEventListener('click', signOutApp);
 
   const exportBtn = document.getElementById('btn-export');
-  if (exportBtn) exportBtn.addEventListener('click', exportReleves);
+  const exportMenu = document.getElementById('exportMenu');
+  if (exportBtn && exportMenu) {
+    exportBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      exportMenu.classList.toggle('open');
+    });
+    document.querySelectorAll('.export-menu-item').forEach(item => {
+      item.addEventListener('click', (e) => {
+        e.stopPropagation();
+        exportMenu.classList.remove('open');
+        exportReleves(item.dataset.exportMode);
+      });
+    });
+    document.addEventListener('click', () => exportMenu.classList.remove('open'));
+  }
 }
 
 // -------------------------------------------------------------------------
