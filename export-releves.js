@@ -14,6 +14,44 @@ const EXPORT_HEADERS = [
 ];
 const EXPORT_MODE_LABEL = { complet: 'complet', jour: 'par_jour', equipement: 'par_equipement' };
 
+// L'app enregistre une nouvelle ligne "releves" à chaque champ modifié
+// (auto-save au fil de la saisie). Une seule anomalie réelle génère donc
+// souvent 5 à 10 lignes quasi identiques. On fusionne les lignes d'un même
+// équipement rapprochées dans le temps (< 20 min d'écart) en une seule —
+// celle qui contient l'état le plus complet/à jour de cette session de saisie.
+const BURST_GAP_MINUTES = 20;
+
+function collapseAutosaveBursts(items) {
+  const byEquip = {};
+  items.forEach(it => {
+    const key = `${it._cat}|${it._code}|${it._composant}`;
+    if (!byEquip[key]) byEquip[key] = [];
+    byEquip[key].push(it);
+  });
+
+  const result = [];
+  Object.values(byEquip).forEach(list => {
+    list.sort((a, b) => (a._createdAt || 0) - (b._createdAt || 0));
+    let burst = [];
+    list.forEach(it => {
+      if (burst.length === 0) { burst.push(it); return; }
+      const prev = burst[burst.length - 1];
+      const gapMin = (it._createdAt && prev._createdAt)
+        ? (it._createdAt - prev._createdAt) / 60000
+        : Infinity;
+      if (gapMin <= BURST_GAP_MINUTES) {
+        burst.push(it);
+      } else {
+        result.push(burst[burst.length - 1]);
+        burst = [it];
+      }
+    });
+    if (burst.length) result.push(burst[burst.length - 1]);
+  });
+
+  return result;
+}
+
 async function fetchExportRows() {
   const { data, error } = await supabaseClient
     .from('releves')
@@ -25,7 +63,7 @@ async function fetchExportRows() {
   const userIds = [...new Set((data || []).map(r => r.saisi_par).filter(Boolean))];
   const names = await fetchProfilNames(userIds);
 
-  return (data || []).map(r => {
+  const items = (data || []).map(r => {
     const eq = r.equipements || {};
     const created = r.created_at ? new Date(r.created_at) : null;
     return {
@@ -52,6 +90,8 @@ async function fetchExportRows() {
       }
     };
   });
+
+  return collapseAutosaveBursts(items);
 }
 
 function buildSheetAoa(items, mode) {
