@@ -44,7 +44,12 @@ body{
 .app{ max-width:1180px; margin:0 auto; padding:20px 18px 60px; }
 
 /* ---------- TOPBAR ---------- */
-.topbar{ display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:20px; flex-wrap:wrap; }
+.topbar{ position:relative; overflow:hidden; display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:20px; flex-wrap:wrap; }
+.topbar-watermark{
+  position:absolute; right:-10px; top:50%; transform:translateY(-50%);
+  height:180px; width:auto; opacity:.07; pointer-events:none; z-index:0;
+}
+.brand, .topbar-right{ position:relative; z-index:1; }
 .brand{ display:flex; align-items:center; gap:13px; }
 .brand-mark{
   width:44px; height:44px; border-radius:8px;
@@ -53,6 +58,9 @@ body{
   font-family:var(--font-display); font-weight:800; font-size:15px; letter-spacing:.5px;
   color:#EAF3EC; flex-shrink:0;
   box-shadow:0 2px 0 rgba(20,92,56,.25), 0 6px 14px rgba(20,92,56,.18);
+}
+.brand-mark-img{
+  height:52px; width:auto; flex-shrink:0;
 }
 .brand h1{
   font-family:var(--font-display); font-size:21px; font-weight:800;
@@ -324,4 +332,4 @@ select:focus{ outline:none; border-color:var(--ocp-leaf); }
   background:rgba(179,58,46,.1); color:var(--alert-red); padding:9px 12px; border-radius:8px;
   font-size:12.5px; font-weight:600;
 }
-.auth-note{ margin-top:16px; font-size:11.5px; color:var(--muted); text-align:center; line-height:1.5; }
+.auth-note{ margin-top:16px; font-size:11.5px; color:var(--muted); text-align:center; line-height:1.5; } 

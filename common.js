@@ -270,8 +270,9 @@ function renderNav(active) {
 
   return `
     <div class="topbar">
+      <img src="logo-ocp-watermark.png" alt="" class="topbar-watermark">
       <div class="brand">
-        <div class="brand-mark">TSP</div>
+        <img src="logo-atelier-tsp.png" alt="Atelier TSP" class="brand-mark-img">
         <div>
           <h1>Suivi Journalier des Équipements</h1>
           <div class="sub">Atelier TSP — Cribles · Bandes · Broyeurs · Pompes</div>
