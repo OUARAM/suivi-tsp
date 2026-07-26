@@ -103,7 +103,7 @@ function renderAuthScreen() {
     <div class="auth-wrap">
       <div class="auth-card">
         <div class="brand" style="justify-content:center;margin-bottom:6px;">
-          <div class="brand-mark">TSP</div>
+          <img src="logo-atelier-tsp.png" alt="Atelier TSP" style="height:100px;width:auto;">
         </div>
         <h1 style="text-align:center;">Suivi Journalier des Équipements</h1>
         <div class="sub" style="text-align:center;margin-bottom:20px;">Atelier TSP — Groupe OCP</div>
