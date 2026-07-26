@@ -44,7 +44,7 @@ body{
 .app{ max-width:1180px; margin:0 auto; padding:20px 18px 60px; }
 
 /* ---------- TOPBAR ---------- */
-.topbar{ position:relative; overflow:hidden; display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:20px; flex-wrap:wrap; }
+.topbar{ position:relative; display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:20px; flex-wrap:wrap; }
 .topbar-watermark{
   position:absolute; right:-10px; top:50%; transform:translateY(-50%);
   height:180px; width:auto; opacity:.07; pointer-events:none; z-index:0;
