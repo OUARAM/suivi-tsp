@@ -137,6 +137,8 @@ function renderAuthScreen() {
         ${authMode === 'signup' ? `
           <div class="auth-note">Votre compte est créé automatiquement avec le rôle Technicien et l'accès à tous les équipements. Un administrateur pourra ajuster vos droits plus tard.</div>
         ` : ''}
+
+        <a href="qrcode.html" style="display:block;text-align:center;margin-top:18px;font-size:12px;color:var(--muted);text-decoration:none;">📱 Code QR de l'application</a>
       </div>
     </div>
   `;
