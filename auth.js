@@ -3,16 +3,34 @@
 // Inscription libre : un compte créé automatiquement en "Technicien / zone Toutes"
 // =========================================================================
 
-let authMode = 'signin'; // signin | signup
+let authMode = 'signin'; // signin | signup | forgot
 let authError = '';
+let authInfo = '';       // message de succès (ex: lien envoyé)
 let authLoading = false;
 let currentSession = null;
 let currentProfile = null; // { nom, role, zone }
+let inPasswordRecovery = false; // true quand l'utilisateur arrive via le lien de réinitialisation
 
 // escapeHtml minimal (auth.js se charge avant common.js, donc on ne dépend pas de lui ici)
 function authEscapeHtml(str) {
   return String(str || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
+
+// -------------------------------------------------------------------------
+// RÉCUPÉRATION DE MOT DE PASSE — détection du lien reçu par email
+// Supabase place le token dans l'URL (#access_token=...&type=recovery) et
+// déclenche l'événement PASSWORD_RECOVERY dès que le client le détecte.
+// On enregistre cette écoute tout de suite, avant même requireAuth().
+// -------------------------------------------------------------------------
+supabaseClient.auth.onAuthStateChange((event, session) => {
+  if (event === 'PASSWORD_RECOVERY') {
+    inPasswordRecovery = true;
+    currentSession = session;
+    authError = '';
+    authInfo = '';
+    renderNewPasswordScreen();
+  }
+});
 
 // -------------------------------------------------------------------------
 // GARDE D'AUTHENTIFICATION — appelée par chaque page avant d'initialiser l'app
@@ -52,6 +70,13 @@ async function requireAuth(onAuthenticated) {
   } catch (err) {
     console.error('Erreur requireAuth :', err);
     renderFatalError(err);
+    return;
+  }
+
+  // Si on vient de cliquer sur un lien "mot de passe oublié", on reste sur
+  // l'écran de saisie du nouveau mot de passe tant qu'il n'a pas été défini.
+  if (inPasswordRecovery) {
+    renderNewPasswordScreen();
     return;
   }
 
@@ -98,6 +123,11 @@ async function signOutApp() {
 // ÉCRAN DE CONNEXION / INSCRIPTION
 // -------------------------------------------------------------------------
 function renderAuthScreen() {
+  if (authMode === 'forgot') {
+    renderForgotPasswordScreen();
+    return;
+  }
+
   const app = document.getElementById('app');
   app.innerHTML = `
     <div class="auth-wrap">
@@ -128,15 +158,17 @@ function renderAuthScreen() {
             <label>Mot de passe</label>
             <input type="password" id="authPassword" placeholder="••••••••" minlength="6" required>
           </div>
+          ${authMode === 'signin' ? `
+            <div style="text-align:right;margin-top:-6px;">
+              <a href="#" id="forgotPasswordLink" style="font-size:12.5px;color:var(--muted);text-decoration:none;">Mot de passe oublié ?</a>
+            </div>
+          ` : ''}
           ${authError ? `<div class="auth-error">${authEscapeHtml(authError)}</div>` : ''}
+          ${authInfo ? `<div class="auth-note" style="color:var(--ocp-forest);">${authEscapeHtml(authInfo)}</div>` : ''}
           <button type="submit" class="auth-submit" ${authLoading ? 'disabled' : ''}>
             ${authLoading ? 'Veuillez patienter…' : (authMode === 'signin' ? 'Se connecter' : 'Créer mon compte')}
           </button>
         </form>
-
-        ${authMode === 'signup' ? `
-          <div class="auth-note">Votre compte est créé automatiquement avec le rôle Technicien et l'accès à tous les équipements. Un administrateur pourra ajuster vos droits plus tard.</div>
-        ` : ''}
 
         <a href="qrcode.html" style="display:block;text-align:center;margin-top:18px;font-size:12px;color:var(--muted);text-decoration:none;">📱 Code QR de l'application</a>
       </div>
@@ -145,14 +177,171 @@ function renderAuthScreen() {
   attachAuthHandlers();
 }
 
+// -------------------------------------------------------------------------
+// ÉCRAN "MOT DE PASSE OUBLIÉ" — saisie de l'email, envoi du lien
+// -------------------------------------------------------------------------
+function renderForgotPasswordScreen() {
+  const app = document.getElementById('app');
+  app.innerHTML = `
+    <div class="auth-wrap">
+      <div class="auth-card">
+        <div class="brand" style="justify-content:center;margin-bottom:6px;">
+          <img src="logo-atelier-tsp.png" alt="Atelier TSP" style="height:100px;width:auto;">
+        </div>
+        <h1 style="text-align:center;">Mot de passe oublié</h1>
+        <div class="sub" style="text-align:center;margin-bottom:20px;">
+          Saisissez votre email, nous vous enverrons un lien de réinitialisation.
+        </div>
+
+        <form id="forgotForm" class="auth-form">
+          <div class="field">
+            <label>Email</label>
+            <input type="email" id="forgotEmail" placeholder="vous@ocp.ma" required>
+          </div>
+          ${authError ? `<div class="auth-error">${authEscapeHtml(authError)}</div>` : ''}
+          ${authInfo ? `<div class="auth-note" style="color:var(--ocp-forest);">${authEscapeHtml(authInfo)}</div>` : ''}
+          <button type="submit" class="auth-submit" ${authLoading ? 'disabled' : ''}>
+            ${authLoading ? 'Envoi en cours…' : 'Envoyer le lien de réinitialisation'}
+          </button>
+        </form>
+
+        <a href="#" id="backToSigninLink" style="display:block;text-align:center;margin-top:18px;font-size:12.5px;color:var(--muted);text-decoration:none;">← Retour à la connexion</a>
+      </div>
+    </div>
+  `;
+  attachForgotHandlers();
+}
+
+function attachForgotHandlers() {
+  document.getElementById('backToSigninLink').addEventListener('click', (e) => {
+    e.preventDefault();
+    authMode = 'signin';
+    authError = '';
+    authInfo = '';
+    renderAuthScreen();
+  });
+
+  document.getElementById('forgotForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('forgotEmail').value.trim();
+
+    authError = '';
+    authInfo = '';
+    authLoading = true;
+    renderForgotPasswordScreen();
+
+    // L'utilisateur sera renvoyé vers index.html avec un token de récupération
+    // dans l'URL ; auth.js détecte alors l'événement PASSWORD_RECOVERY.
+    const redirectTo = window.location.origin + window.location.pathname.replace(/[^/]*$/, 'index.html');
+
+    const { error } = await supabaseClient.auth.resetPasswordForEmail(email, { redirectTo });
+    authLoading = false;
+
+    // On affiche toujours le même message, que l'email existe ou non
+    // (évite de révéler si une adresse est enregistrée dans le système).
+    if (error) {
+      console.error('Erreur resetPasswordForEmail :', error);
+    }
+    authInfo = "Si cet email est associé à un compte, un lien de réinitialisation vient d'être envoyé. Vérifiez votre boîte mail (et vos spams).";
+    renderForgotPasswordScreen();
+  });
+}
+
+// -------------------------------------------------------------------------
+// ÉCRAN "NOUVEAU MOT DE PASSE" — affiché après clic sur le lien reçu par email
+// -------------------------------------------------------------------------
+function renderNewPasswordScreen() {
+  const app = document.getElementById('app');
+  app.innerHTML = `
+    <div class="auth-wrap">
+      <div class="auth-card">
+        <div class="brand" style="justify-content:center;margin-bottom:6px;">
+          <img src="logo-atelier-tsp.png" alt="Atelier TSP" style="height:100px;width:auto;">
+        </div>
+        <h1 style="text-align:center;">Nouveau mot de passe</h1>
+        <div class="sub" style="text-align:center;margin-bottom:20px;">Choisissez un nouveau mot de passe pour votre compte</div>
+
+        <form id="newPasswordForm" class="auth-form">
+          <div class="field">
+            <label>Nouveau mot de passe</label>
+            <input type="password" id="newPassword" placeholder="••••••••" minlength="6" required>
+          </div>
+          <div class="field">
+            <label>Confirmer le mot de passe</label>
+            <input type="password" id="newPasswordConfirm" placeholder="••••••••" minlength="6" required>
+          </div>
+          ${authError ? `<div class="auth-error">${authEscapeHtml(authError)}</div>` : ''}
+          <button type="submit" class="auth-submit" ${authLoading ? 'disabled' : ''}>
+            ${authLoading ? 'Veuillez patienter…' : 'Mettre à jour le mot de passe'}
+          </button>
+        </form>
+      </div>
+    </div>
+  `;
+  attachNewPasswordHandlers();
+}
+
+function attachNewPasswordHandlers() {
+  document.getElementById('newPasswordForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const password = document.getElementById('newPassword').value;
+    const confirmPwd = document.getElementById('newPasswordConfirm').value;
+
+    authError = '';
+
+    if (password !== confirmPwd) {
+      authError = "Les deux mots de passe ne correspondent pas.";
+      renderNewPasswordScreen();
+      return;
+    }
+    if (password.length < 6) {
+      authError = "Le mot de passe doit contenir au moins 6 caractères.";
+      renderNewPasswordScreen();
+      return;
+    }
+
+    authLoading = true;
+    renderNewPasswordScreen();
+
+    const { error } = await supabaseClient.auth.updateUser({ password });
+    authLoading = false;
+
+    if (error) {
+      authError = translateAuthError(error.message);
+      renderNewPasswordScreen();
+      return;
+    }
+
+    inPasswordRecovery = false;
+    // On force une reconnexion propre pour repartir sur un état sain
+    await supabaseClient.auth.signOut();
+    authMode = 'signin';
+    authError = '';
+    authInfo = "Mot de passe mis à jour avec succès. Connectez-vous avec votre nouveau mot de passe.";
+    location.reload();
+  });
+}
+
 function attachAuthHandlers() {
   document.querySelectorAll('.auth-tab').forEach(btn => {
     btn.addEventListener('click', () => {
       authMode = btn.dataset.mode;
       authError = '';
+      authInfo = '';
       renderAuthScreen();
     });
   });
+
+  const forgotLink = document.getElementById('forgotPasswordLink');
+  if (forgotLink) {
+    forgotLink.addEventListener('click', (e) => {
+      e.preventDefault();
+      authMode = 'forgot';
+      authError = '';
+      authInfo = '';
+      renderAuthScreen();
+    });
+  }
 
   document.getElementById('authForm').addEventListener('submit', async (e) => {
     e.preventDefault();
