@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QR Code — Suivi TSP</title>
 <link rel="stylesheet" href="style.css">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <style>
   .qr-wrap{
     min-height:100vh; display:flex; align-items:center; justify-content:center;
@@ -15,10 +14,12 @@
     background:var(--panel); border-radius:16px; padding:40px 50px;
     box-shadow:0 8px 30px rgba(20,40,30,.12); text-align:center; max-width:360px;
   }
-  #qrcode{ display:flex; justify-content:center; margin:20px 0; }
+  #qrcode{ margin:20px 0; }
+  #qrcode img{ width:220px; height:220px; border:1px solid var(--line); border-radius:8px; }
   .qr-url{
     font-family:var(--font-mono); font-size:13px; color:var(--text);
     background:var(--panel-2); padding:8px 14px; border-radius:8px; display:inline-block;
+    word-break:break-all;
   }
   .qr-print-btn{ margin-top:20px; }
   .qr-back{ display:block; margin-top:16px; font-size:12.5px; color:var(--muted); text-decoration:none; }
@@ -43,16 +44,10 @@
     </div>
   </div>
   <script>
-    const appUrl = window.location.origin + window.location.pathname.replace(/qrcode\.html$/, 'index.html');
+    const appUrl = window.location.origin + window.location.pathname.replace(/qrcode\.html(\?.*)?$/, 'index.html');
     document.getElementById('qrUrl').textContent = appUrl.replace(/^https?:\/\//, '');
-    new QRCode(document.getElementById("qrcode"), {
-      text: appUrl,
-      width: 200,
-      height: 200,
-      colorDark: "#145C38",
-      colorLight: "#ffffff",
-      correctLevel: QRCode.CorrectLevel.H
-    });
+    const qrImgUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=220x220&color=145C38&data=' + encodeURIComponent(appUrl);
+    document.getElementById('qrcode').innerHTML = '<img src="' + qrImgUrl + '" alt="QR Code">';
   </script>
 </body>
 </html>
